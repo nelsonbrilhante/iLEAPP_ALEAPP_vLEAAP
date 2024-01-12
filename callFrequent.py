@@ -1,94 +1,86 @@
-#Authors: Nelson Brilhante & Rúben Mendes
-
-from collections import Counter
-import sqlite3
+# scripts/artifacts/callFrequent.py
 
 from scripts.artifact_report import ArtifactHtmlReport
-from scripts.ilapfuncs import logfunc, tsv, timeline, open_sqlite_db_readonly
+from scripts.ilapfuncs import logfunc, tsv, open_sqlite_db_readonly
 
-def get_callFrequent(files_found, report_folder, seeker, wrap_text):
-    
-    file_found = str(files_found[0])
-    db = open_sqlite_db_readonly(file_found)
-    cursor = db.cursor()
-    cursor.execute('''
-    SELECT
-    datetime(date /1000, 'unixepoch') as date,
-    CASE
-        WHEN phone_account_address is NULL THEN ' '
-        ELSE phone_account_address
-        end as phone_account_address,
-    number,
-    CASE
-        WHEN type = 1 THEN  'Incoming'
-        WHEN type = 2 THEN  'Outgoing'
-        WHEN type = 3 THEN  'Missed'
-        WHEN type = 4 THEN  'Voicemail'
-        WHEN type = 5 THEN  'Rejected'
-        WHEN type = 6 THEN  'Blocked'
-        WHEN type = 7 THEN  'Answered Externally'
-        ELSE 'Unknown'
-        end as types,
-    duration,
-    CASE
-        WHEN geocoded_location is NULL THEN ' '
-        ELSE geocoded_location
-        end as geocoded_location,
-    countryiso,
-    CASE
-        WHEN _data is NULL THEN ' '
-        ELSE _data
-        END as _data,
-    CASE
-        WHEN mime_type is NULL THEN ' '
-        ELSE mime_type
-        END as mime_type,
-    CASE
-        WHEN transcription is NULL THEN ' '
-        ELSE transcription
-        END as transcription,
-    deleted
-    FROM
-    calls
-    ''')
+__artifacts_v2__ = {
+    "callfrequent": {
+        "name": "Frequent Call Numbers",
+        "description": "Shows the most dialed and most received call numbers",
+        "author": "Nelson Brilhante & Rúben Mendes",
+        "version": "0.1",
+        "date": "2024-01-12",
+        "requirements": "none",
+        "category": "Call History",
+        "notes": "Updated to include in/out column.",
+        "paths": ('**/CallHistory.storedata*',),
+        "function": "get_callFrequent"
+    }
+}
 
-    all_rows = cursor.fetchall()
-    usageentries = len(all_rows)
-    
-    if usageentries > 0:
-        report = ArtifactHtmlReport('Call Frequent')
-        report.start_artifact_report(report_folder, 'Call Frequent')
-        report.add_script()
-        data_headers = ('Most Called Number','Number of times')
-        data_list = []
-        phone_number_counter = Counter()  #Counter to track the count of each phone number
+def get_callFrequent(files_found, report_folder, seeker, wrap_text, time_offset):
+    logfunc("If you can read this its working.")
 
-        for row in all_rows:
-            #Increment the count for each phone number
-            phone_number_counter[row[2]] += 1
+    # Initialize the variables to None for the most dialed and received numbers
+    most_dialed = None
+    most_received = None
 
-        #Find the most called number
-        most_called_number, count = phone_number_counter.most_common(1)[0]
+    for file_found in files_found:
+        logfunc(f'Found file: {file_found}')
+        file_found = str(file_found)
+        if file_found.endswith('.storedata'):
+            db = open_sqlite_db_readonly(file_found)
+            cursor = db.cursor()
+            cursor.execute('''
+            select ZADDRESS, CASE ZORIGINATED WHEN 1 then 'Outgoing' ELSE 'Incoming' END
+            from ZCALLRECORD
+            ''')
 
-        #Write data in log reports
-        logfunc(f'Most Called Number: {most_called_number}, Count: {count}')
+            all_rows = cursor.fetchall()
+            db.close()
 
-        #Create table with data collected
-        data_list.append((most_called_number,count))
+            if not all_rows:
+                logfunc('No Call History data available')
+                return
 
-        #Write data in HTML report
-        report.write_artifact_data_table(data_headers, data_list, file_found, html_escape=False)
-        report.end_artifact_report()
-        
-        tsvname = f'Call Frequent'
-        tsv(report_folder, data_headers, data_list, tsvname)
+            # Count the frequency of each contact number
+            dialed = {}
+            received = {}
+            for row in all_rows:
+                number, direction = row
+                if direction == 'Outgoing':
+                    dialed[number] = dialed.get(number, 0) + 1
+                else:
+                    received[number] = received.get(number, 0) + 1
 
-        tlactivity = 'Call Frequent'
-        timeline(report_folder, tlactivity, data_list, data_headers)
+            # Find the most frequent contact numbers
+            most_dialed = max(dialed, key=dialed.get, default='None')
+            most_received = max(received, key=received.get, default='None')
+            break
 
-        
+    # Make sure we have found a .storedata file and processed it
+    if most_dialed is None or most_received is None:
+        logfunc('No .storedata file found or no call records processed.')
+        return
 
-    else:
-        logfunc('No Call Log data available')
-    
-    db.close()
+    # Prepare the list for the report
+    data_list = [
+        ("Out", most_dialed, dialed.get(most_dialed, 'None')),
+        ("In", most_received, received.get(most_received, 'None'))
+    ]
+
+    # Create the report
+    report = ArtifactHtmlReport('Frequent Call Numbers')
+    report.start_artifact_report(report_folder, 'Frequent Call Numbers')
+    report.add_script()
+    data_headers = ('in/out', 'Phone Number', 'Frequency')
+    report.write_artifact_data_table(data_headers, data_list, file_found)
+    report.end_artifact_report()
+
+    # Write a TSV report as well - framework requirement
+    tsvname = 'Frequent Call Numbers'
+    tsv(report_folder, data_headers, data_list, tsvname)
+
+# Standalone version
+if __name__ == '__main__':
+    pass
