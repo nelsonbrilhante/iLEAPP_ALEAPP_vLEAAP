@@ -37,4 +37,4 @@ Este módulo foi desenvolvido por Nelson Brilhante & Rúben Mendes. Estamos aber
 
 ## Licença
 
-Este módulo segue a mesma licença do projeto iLEAPP. Consulte a documentação do iLEAPP para mais detalhes sobre a licença.
+Este módulo segue a mesma licença do projeto iLEAPP, ALEAPP, vLEAPP. Consulte a documentação do iLEAPP, ALEAPP, vLEAPP para mais detalhes sobre a licença.
